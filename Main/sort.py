@@ -73,18 +73,23 @@ def iou_batch(bb_test, bb_gt):
 
 
 def convert_bbox_to_z(bbox):
-  """
-  Takes a bounding box in the form [x1,y1,x2,y2] and returns z in the form
-    [x,y,s,r] where x,y is the centre of the box and s is the scale/area and r is
-    the aspect ratio
-  """
-  w = bbox[2] - bbox[0]
-  h = bbox[3] - bbox[1]
-  x = bbox[0] + w/2.
-  y = bbox[1] + h/2.
-  s = w * h    #scale is just area
-  r = w / float(h)
-  return np.array([x, y, s, r]).reshape((4, 1))
+    """
+    Takes a bounding box in the form [x1,y1,x2,y2] and returns z in the form
+      [x,y,s,r] where x,y is the centre of the box and s is the scale/area and r is
+      the aspect ratio
+    """
+    try:
+        bbox = np.array(bbox, dtype=float)  # Ensure bbox is a float array
+        w = bbox[2] - bbox[0]
+        h = bbox[3] - bbox[1]
+        x = bbox[0] + w / 2.
+        y = bbox[1] + h / 2.
+        s = w * h    # scale is just area
+        r = w / float(h)
+        return np.array([x, y, s, r]).reshape((4, 1))
+    except Exception as e:
+        print(f"Error in convert_bbox_to_z: {e}")
+        raise
 
 
 def convert_x_to_bbox(x,score=None):
@@ -217,49 +222,49 @@ class Sort(object):
     self.frame_count = 0
 
   def update(self, dets=np.empty((0, 5))):
-    """
-    Params:
-      dets - a numpy array of detections in the format [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
-    Requires: this method must be called once for each frame even with empty detections (use np.empty((0, 5)) for frames without detections).
-    Returns the a similar array, where the last column is the object ID.
+      """
+      Params:
+        dets - a numpy array of detections in the format [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
+      Requires: this method must be called once for each frame even with empty detections (use np.empty((0, 5)) for frames without detections).
+      Returns the a similar array, where the last column is the object ID.
 
-    NOTE: The number of objects returned may differ from the number of detections provided.
-    """
-    self.frame_count += 1
-    # get predicted locations from existing trackers.
-    trks = np.zeros((len(self.trackers), 5))
-    to_del = []
-    ret = []
-    for t, trk in enumerate(trks):
-      pos = self.trackers[t].predict()[0]
-      trk[:] = [pos[0], pos[1], pos[2], pos[3], 0]
-      if np.any(np.isnan(pos)):
-        to_del.append(t)
-    trks = np.ma.compress_rows(np.ma.masked_invalid(trks))
-    for t in reversed(to_del):
-      self.trackers.pop(t)
-    matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(dets,trks, self.iou_threshold)
+      NOTE: The number of objects returned may differ from the number of detections provided.
+      """
+      self.frame_count += 1
+      # get predicted locations from existing trackers.
+      trks = np.zeros((len(self.trackers), 5))
+      to_del = []
+      ret = []
+      for t, trk in enumerate(trks):
+          pos = self.trackers[t].predict()[0]
+          trk[:] = [pos[0], pos[1], pos[2], pos[3], 0]
+          if np.any(np.isnan(pos)):
+              to_del.append(t)
+      trks = np.ma.compress_rows(np.ma.masked_invalid(trks))
+      for t in reversed(to_del):
+          self.trackers.pop(t)
+      matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(dets, trks, self.iou_threshold)
 
-    # update matched trackers with assigned detections
-    for m in matched:
-      self.trackers[m[1]].update(dets[m[0], :])
+      # update matched trackers with assigned detections
+      for m in matched:
+          self.trackers[m[1]].update(dets[m[0], :])
 
-    # create and initialise new trackers for unmatched detections
-    for i in unmatched_dets:
-        trk = KalmanBoxTracker(dets[i,:])
-        self.trackers.append(trk)
-    i = len(self.trackers)
-    for trk in reversed(self.trackers):
-        d = trk.get_state()[0]
-        if (trk.time_since_update < 1) and (trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits):
-          ret.append(np.concatenate((d,[trk.id+1])).reshape(1,-1)) # +1 as MOT benchmark requires positive
-        i -= 1
-        # remove dead tracklet
-        if(trk.time_since_update > self.max_age):
-          self.trackers.pop(i)
-    if(len(ret)>0):
-      return np.concatenate(ret)
-    return np.empty((0,5))
+      # create and initialise new trackers for unmatched detections
+      for i in unmatched_dets:
+          trk = KalmanBoxTracker(dets[i,:])
+          self.trackers.append(trk)
+      i = len(self.trackers)
+      for trk in reversed(self.trackers):
+          d = trk.get_state()[0]
+          if (trk.time_since_update < 1) and (trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits):
+              ret.append(np.concatenate((d,[trk.id+1])).reshape(1,-1)) # +1 as MOT benchmark requires positive
+          i -= 1
+          # remove dead tracklet
+          if(trk.time_since_update > self.max_age):
+              self.trackers.pop(i)
+      if(len(ret)>0):
+          return np.concatenate(ret)
+      return np.empty((0,5))
 
 def parse_args():
     """Parse input arguments."""
